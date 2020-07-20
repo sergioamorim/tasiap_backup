@@ -1,13 +1,13 @@
 from paramiko import RSAKey
 
-server_private_key = RSAKey(filename=r'C:\Users\sergio\backup_manager\tests\server_private_key')
-client_private_key = RSAKey(filename=r'C:\Users\sergio\backup_manager\tests\client_private_key')
+server_private_key = RSAKey(filename='tests/server_private_key')
+client_private_key = RSAKey(filename='tests/client_private_key')
 
 username = 'my_username'
 port = 2222
 
 ssh_client_options = {
-  'hosts_keys_filename': r'C:\Users\sergio\backup_manager\tests\hosts_keys',
+  'hosts_keys_filename': 'tests/hosts_keys',
 }
 
 ssh_credentials = {

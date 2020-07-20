@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, call, patch
 from paramiko import SSHClient
 
 import config
-from backup_manager.ssh_client import open_ssh_client, close_connection, setup_client, supply_ssh_connection
+from backup.ssh_client import open_ssh_client, close_connection, setup_client, supply_ssh_connection
 from tests.ssh_testing_environment import SSHTestingEnvironment
 from tests.testing_config import ssh_credentials, ssh_client_options
 
@@ -46,7 +46,7 @@ class TestFunctions(TestCase):
     close_connection(ssh=mock_ssh)
     self.assertEqual(first=expected_behavior, second=mock_ssh.mock_calls)
 
-  @patch(target='backup_manager.ssh_client.SSHClient')
+  @patch(target='backup.ssh_client.SSHClient')
   def test_setup_client(self, MockSSHClient):
 
     expected_behavior = [
@@ -57,7 +57,7 @@ class TestFunctions(TestCase):
     setup_client(ssh_client_options=ssh_client_options)
     self.assertEqual(first=expected_behavior, second=MockSSHClient.mock_calls)
 
-  @patch(target='backup_manager.ssh_client.open_ssh_client')
+  @patch(target='backup.ssh_client.open_ssh_client')
   def test_supply_ssh_connection(self, mock_open_ssh_connection):
     mock_open_ssh_connection.return_value.__enter__.return_value = 'one ssh connection'
     config.ssh_client_options = 'client options'
