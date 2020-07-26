@@ -39,22 +39,21 @@ def export_command(device_id):
   }
 
 
-def make_delete_file_command(filename):
-  return '/file remove {filename}'.format(filename=filename)
+@supply_ssh_connection
+def generate_backup(device_id, ssh=None):
+  return generate_remotely(device_id=device_id, command_maker=backup_command, ssh=ssh)
 
 
 @supply_ssh_connection
-def generate_backup(device_id, ssh=None):
-  current_backup_command = backup_command(device_id=device_id)
-  ssh.exec_command(command=current_backup_command['command'])
-  return current_backup_command['filename']
+def generate_remotely(device_id, command_maker, ssh=None):
+  command_made = command_maker(device_id=device_id)
+  ssh.exec_command(command=command_made['command'])
+  return command_made['filename']
 
 
 @supply_ssh_connection
 def generate_export_script(device_id, ssh=None):
-  current_export_command = export_command(device_id=device_id)
-  ssh.exec_command(command=current_export_command['command'])
-  return current_export_command['filename']
+  return generate_remotely(device_id=device_id, command_maker=export_command, ssh=ssh)
 
 
 def localpath(filename):
