@@ -3,12 +3,53 @@ from pathlib import PurePath
 from unittest import TestCase
 from unittest.mock import patch, MagicMock, call
 
-from backup.routerboard import make_filename, current_datetime, backup_filename, script_filename, \
-  backup_command, \
-  export_command, generate_backup, localpath, make_remotepath, retrieve_file, \
-  delete_remote_file, clean_remote_backup_files, retrieve_backup_files, generate_export_script, backup, \
-  remote_file_exists, timeout, assert_remote_file_exists, remotepath_without_root, generate_remotely
 import config
+from backup.routerboard import make_filename, current_datetime, backup_filename, script_filename, backup_command, \
+  export_command, generate_backup, localpath, retrieve_file, retrieve_backup_files, generate_export_script, backup, \
+  remote_file_exists, timeout, assert_remote_file_exists, generate_remotely, RemotePath, remotepath_without_root
+
+
+class TestRemotePath(TestCase):
+
+  def test_init(self):
+    path = '/some/path'
+    self.assertEqual(
+      first=PurePath(path),
+      second=RemotePath(path=path).pure,
+      msg='Sets the pure property to a PurePath of the path passed'
+    )
+
+  @patch(target='backup.routerboard.remotepath_without_root')
+  def test_without_root(self, mock_remotepath_without_root):
+    remotepath = RemotePath(path='/some/path')
+    self.assertEqual(
+      first=mock_remotepath_without_root.return_value,
+      second=remotepath.without_root,
+      msg='Returns the remote path without root'
+    )
+    self.assertIn(
+      member=call(remotepath=remotepath.pure),
+      container=mock_remotepath_without_root.mock_calls,
+      msg=str(
+        'Gather the remote path without root from its pure path'
+      )
+    )
+
+  @patch(target='backup.routerboard.remotepath_without_root')
+  def test_parent_without_root(self, mock_remotepath_without_root):
+    remotepath = RemotePath(path='/some/path')
+    self.assertEqual(
+      first=mock_remotepath_without_root.return_value,
+      second=remotepath.parent_without_root,
+      msg='Returns the remote path parent without root'
+    )
+    self.assertIn(
+      member=call(remotepath=remotepath.pure.parent),
+      container=mock_remotepath_without_root.mock_calls,
+      msg=str(
+        'Gather the remote path without root from its pure.parent path'
+      )
+    )
 
 
 class TestBackupFunctions(TestCase):
@@ -186,29 +227,13 @@ class TestBackupFunctions(TestCase):
       msg='Returns a PurePath with the filename passed on the directory from backup_files_directory_path on config'
     )
 
-  def test_make_remotepath(self):
-    filename = 'file name'
-    expected_localpath = PurePath('/{filename}'.format(filename=filename))
-    self.assertEqual(
-      first=expected_localpath,
-      second=make_remotepath(filename=filename),
-      msg='Returns a PurePath with the filename passed in root directory'
-    )
-
-  @patch(target='backup.routerboard.remotepath_without_root', return_value='some/path')
   @patch(target='backup.routerboard.assert_remote_file_exists')
   @patch(target='backup.routerboard.localpath', return_value='local path')
-  @patch(target='backup.routerboard.make_remotepath', return_value='remote path')
-  def test_retrieve_file(
-      self, mock_make_remotepath, mock_localpath, mock_assert_remote_file_exists, mock_remotepath_without_root
-  ):
+  @patch(target='backup.routerboard.RemotePath')
+  def test_retrieve_file(self, mock_remotepath, mock_localpath, mock_assert_remote_file_exists):
     config.backup_files_directory_path = 'backup files directory path'
     mock_sftp_session = MagicMock()
     filename = 'some filename'
-
-    expected_behaviour = [
-      call.get(remotepath=mock_remotepath_without_root.return_value, localpath=mock_localpath.return_value)
-    ]
 
     mock_assert_remote_file_exists.return_value = True
     self.assertEqual(
@@ -217,59 +242,28 @@ class TestBackupFunctions(TestCase):
       msg='When the remote file exists, returns the localpath of the file retrieved (acquired with localpath function)'
     )
     self.assertEqual(
-      first=expected_behaviour,
+      first=[
+        call.get(remotepath=mock_remotepath().without_root, localpath=mock_localpath.return_value),
+        call.unlink(path=mock_remotepath().without_root)
+      ],
       second=mock_sftp_session.mock_calls,
       msg=str(
-        'Calls .get method on the sftp passed with remotepath acquired from remotepath_without_root and localpath '
-        'acquired from the localpath function'
+        'Calls .get method on the sftp passed with the remote path without root and localpath acquired from the '
+        'localpath function and the .unlink method is called with the remote path without root as the path parameter,'
+        'in that order'
       )
     )
+
     self.assertEqual(
-      first=[call(filename=filename)],
-      second=mock_make_remotepath.mock_calls,
-      msg='The make_remotepath function is called with the filename passed'
+      first=[call(path=filename), call(), call()],
+      second=mock_remotepath.mock_calls,
+      msg='A RemotePath is created with the filename passed as path parameter'
     )
 
     mock_assert_remote_file_exists.return_value = False
     self.assertIsNone(
       obj=retrieve_file(filename, sftp=mock_sftp_session),
       msg='When remote file does not exists, return None'
-    )
-
-  @patch(target='backup.routerboard.make_remotepath', return_value='remote path')
-  def test_delete_remote_file(self, mock_make_remotepath):
-    filename = 'some filename'
-    mock_sftp_session = MagicMock()
-    expected_behaviour = [
-      call.unlink(path=mock_make_remotepath.return_value)
-    ]
-    delete_remote_file(filename=filename, sftp=mock_sftp_session)
-    self.assertEqual(
-      first=expected_behaviour,
-      second=mock_sftp_session.mock_calls,
-      msg='The .unlink method from the sftp passed is called with make_remotepath as the path parameter'
-    )
-    self.assertEqual(
-      first=[call(filename=filename)],
-      second=mock_make_remotepath.mock_calls,
-      msg='The make_remotepath function is called with the filename passed'
-    )
-
-  @patch(target='backup.routerboard.delete_remote_file')
-  def test_clean_remote_backup_files(self, mock_delete_remote_file):
-    filenames = ['filename_a', 'filename_b']
-    sftp_session = 'sftp session'
-    expected_behaviour = [call(filename=filename, sftp=sftp_session) for filename in filenames]
-
-    clean_remote_backup_files(filenames=filenames, sftp=sftp_session)
-
-    self.assertEqual(
-      first=expected_behaviour,
-      second=mock_delete_remote_file.mock_calls,
-      msg=str(
-        'The delete_remote_file function is called with each filename passed on the filenames parameter as well as '
-        'with the sftp passed'
-      )
     )
 
   @patch(target='backup.routerboard.retrieve_file', return_value='filepath')
@@ -303,31 +297,30 @@ class TestBackupFunctions(TestCase):
       msg='Returns the list of files that were retrieved (acquired from the function retrieve_backup_files)'
     )
     self.assertEqual(
-      first=[call(device_id=device_id)],
+      first=[call(device_id=device_id, ssh=ssh)],
       second=mock_generate_backup.mock_calls,
       msg='The generate_backup function is called with the device_id passed'
     )
     self.assertEqual(
-      first=[call(device_id=device_id)],
+      first=[call(device_id=device_id, ssh=ssh)],
       second=mock_generate_export_script.mock_calls,
       msg='The generate_export_script function is called with the device_id passed'
     )
 
-  @patch(target='backup.routerboard.remotepath_without_root', return_value='something')
-  def test_remote_file_exists(self, mock_remotepath_parent):
+  def test_remote_file_exists(self):
     sftp = MagicMock()
 
     filename = 'file'
-    remotepath = PurePath('/path/to/{filename}'.format(filename=filename))
+    remotepath = RemotePath(path='/path/to/{filename}'.format(filename=filename))
     sftp.listdir.return_value = ['']
     self.assertFalse(
       expr=remote_file_exists(remotepath=remotepath, sftp=sftp),
       msg='Returns False when a list with an empty string is returned from the .listdir method on the sftp passed'
     )
     self.assertEqual(
-      first=[call(path=mock_remotepath_parent.return_value)],
+      first=[call(path=remotepath.parent_without_root)],
       second=sftp.listdir.mock_calls,
-      msg='The method .listdir from the sftp passed is called with remotepath_parent as the path parameter'
+      msg='The method .listdir from the sftp passed is called with remote path parent without root as path parameter'
     )
 
     sftp.listdir.return_value = [filename]

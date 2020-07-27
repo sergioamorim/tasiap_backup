@@ -2,7 +2,19 @@ from datetime import datetime, timedelta
 from pathlib import PurePath
 
 import config
-from backup.ssh_client import supply_ssh_connection
+
+
+class RemotePath:
+  def __init__(self, path):
+   self.pure = PurePath(path)
+
+  @property
+  def without_root(self):
+    return remotepath_without_root(remotepath=self.pure)
+
+  @property
+  def parent_without_root(self):
+    return remotepath_without_root(remotepath=self.pure.parent)
 
 
 def make_filename(prefix):
@@ -39,20 +51,17 @@ def export_command(device_id):
   }
 
 
-@supply_ssh_connection
-def generate_backup(device_id, ssh=None):
+def generate_backup(device_id, ssh):
   return generate_remotely(device_id=device_id, command_maker=backup_command, ssh=ssh)
 
 
-@supply_ssh_connection
-def generate_remotely(device_id, command_maker, ssh=None):
+def generate_remotely(device_id, command_maker, ssh):
   command_made = command_maker(device_id=device_id)
   ssh.exec_command(command=command_made['command'])
   return command_made['filename']
 
 
-@supply_ssh_connection
-def generate_export_script(device_id, ssh=None):
+def generate_export_script(device_id, ssh):
   return generate_remotely(device_id=device_id, command_maker=export_command, ssh=ssh)
 
 
@@ -63,42 +72,29 @@ def localpath(filename):
   ))
 
 
-def make_remotepath(filename):
-  return PurePath('/{filename}'.format(filename=filename))
-
-
 def retrieve_file(filename, sftp):
   current_localpath = localpath(filename=filename)
-  remotepath = make_remotepath(filename=filename)
+  remotepath = RemotePath(path=filename)
   if assert_remote_file_exists(remotepath=remotepath, sftp=sftp):
-    sftp.get(remotepath=remotepath_without_root(remotepath), localpath=str(current_localpath))
+    sftp.get(remotepath=remotepath.without_root, localpath=str(current_localpath))
+    sftp.unlink(path=remotepath.without_root)
     return current_localpath
   return None
-
-
-def delete_remote_file(filename, sftp):
-  sftp.unlink(path=make_remotepath(filename=filename))
-
-
-def clean_remote_backup_files(filenames, sftp):
-  for filename in filenames:
-    delete_remote_file(filename=filename, sftp=sftp)
 
 
 def retrieve_backup_files(filenames, sftp):
   return [retrieve_file(filename=filename, sftp=sftp) for filename in filenames]
 
 
-@supply_ssh_connection
-def backup(device_id, ssh=None):
+def backup(device_id, ssh):
   return retrieve_backup_files(
-    filenames=[generate_backup(device_id=device_id), generate_export_script(device_id=device_id)],
+    filenames=[generate_backup(device_id=device_id, ssh=ssh), generate_export_script(device_id=device_id, ssh=ssh)],
     sftp=ssh.open_sftp()
   )
 
 
 def remote_file_exists(remotepath, sftp):
-  return remotepath.name in sftp.listdir(path=remotepath_without_root(remotepath.parent))
+  return remotepath.pure.name in sftp.listdir(path=remotepath.parent_without_root)
 
 
 def timeout(start_time, seconds):
