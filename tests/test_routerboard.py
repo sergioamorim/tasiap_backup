@@ -6,7 +6,8 @@ from unittest.mock import patch, MagicMock, call
 import config
 from backup.routerboard import make_filename, current_datetime, backup_filename, script_filename, backup_command, \
   export_command, generate_backup, localpath, retrieve_file, retrieve_backup_files, generate_export_script, backup, \
-  remote_file_exists, timeout, assert_remote_file_exists, generate_remotely, RemotePath, remotepath_without_root
+  remote_file_exists, timeout, assert_remote_file_exists, RemotePath, remotepath_without_root, \
+  routerboards_backups
 
 
 class TestRemotePath(TestCase):
@@ -111,19 +112,17 @@ class TestBackupFunctions(TestCase):
 
   @patch(target='backup.routerboard.backup_filename', return_value='backup filename')
   def test_backup_command(self, mock_backup_filename):
-    config.backup_password = 'some password'
+    backup_password = 'some password'
     device_id = 'some id'
 
-    expected_backup_command = {
-      'command': str(
-        '/system backup save name={backup_filename} password={backup_password}'
-      ).format(backup_filename=mock_backup_filename.return_value, backup_password=config.backup_password),
-      'filename': mock_backup_filename.return_value,
-    }
-
     self.assertEqual(
-      first=expected_backup_command,
-      second=backup_command(device_id=device_id),
+      first={
+        'command': str(
+          '/system backup save name={backup_filename} password={backup_password}'
+        ).format(backup_filename=mock_backup_filename.return_value, backup_password=backup_password),
+        'filename': mock_backup_filename.return_value,
+      },
+      second=backup_command(device_id=device_id, backup_password=backup_password),
       msg=str(
         'A dict with the command and the filename is returned. The filename is acquired by the function '
         'backup_filename. The command has the filename as the name parameter and the backup_password from config as '
@@ -158,40 +157,21 @@ class TestBackupFunctions(TestCase):
   def test_generate_backup(self, mock_backup_command):
     mock_backup_command.return_value = {'command': 'something', 'filename': 'some_file'}
     device_id = 'some id'
+    backup_password = 'pass'
     mock_ssh = MagicMock()
-    expected_behaviour = [
-      call.exec_command(command=mock_backup_command.return_value['command'])
-    ]
 
     self.assertEqual(
       first=mock_backup_command.return_value['filename'],
-      second=generate_backup(device_id=device_id, ssh=mock_ssh),
+      second=generate_backup(device_id=device_id, backup_password=backup_password, ssh=mock_ssh),
       msg='Returns the filename of the backup file generated'
     )
 
     self.assertEqual(
-      first=expected_behaviour,
+      first=[
+        call.exec_command(command=mock_backup_command.return_value['command'])
+      ],
       second=mock_ssh.mock_calls,
       msg='Calls the exec_command on the ssh passed with the command acquired from the backup_command function'
-    )
-
-  def test_generate_remotely(self):
-    def command_maker(device_id):
-      return {
-        'command': 'some command with {device_id} in it'.format(device_id=device_id),
-        'filename': 'some filename with {device_id} in it'.format(device_id=device_id),
-      }
-    current_device_id = 'my little device'
-    ssh = MagicMock()
-    self.assertEqual(
-      first=command_maker(device_id=current_device_id)['filename'],
-      second=generate_remotely(device_id=current_device_id, command_maker=command_maker, ssh=ssh),
-      msg='Returns the "filename" value from the dictionary acquired from the command_maker'
-    )
-    self.assertEqual(
-      first=[call.exec_command(command=command_maker(device_id=current_device_id)['command'])],
-      second=ssh.mock_calls,
-      msg='Executes the command acquired from command_maker on the ssh session passed'
     )
 
   @patch(target='backup.routerboard.export_command')
@@ -290,14 +270,15 @@ class TestBackupFunctions(TestCase):
   def test_backup(self, mock_generate_export_script, mock_generate_backup, mock_retrieve_backup_files):
     ssh = MagicMock()
     device_id = 'device id'
+    backup_password = 'not too secret'
 
     self.assertEqual(
       first=mock_retrieve_backup_files.return_value,
-      second=backup(device_id=device_id, ssh=ssh),
+      second=backup(device_id=device_id, backup_password=backup_password, ssh=ssh),
       msg='Returns the list of files that were retrieved (acquired from the function retrieve_backup_files)'
     )
     self.assertEqual(
-      first=[call(device_id=device_id, ssh=ssh)],
+      first=[call(device_id=device_id, backup_password=backup_password, ssh=ssh)],
       second=mock_generate_backup.mock_calls,
       msg='The generate_backup function is called with the device_id passed'
     )
@@ -401,4 +382,64 @@ class TestBackupFunctions(TestCase):
         'Returns the file or directory path without the root slash when the remotepath is from a file or directory '
         'inside a directory other than root'
       )
+    )
+
+  @patch(target='backup.routerboard.open_ssh_session')
+  @patch(target='backup.routerboard.backup')
+  def test_routerboards_backups(self, mock_backup, mock_open_ssh_session):
+    ssh_client_options = {
+      'hosts_keys_filename': 'tests/hosts_keys',
+    }
+    self.assertEqual(
+      first=[],
+      second=routerboards_backups(
+        routerboards=[],
+        ssh_client_options=ssh_client_options
+      ),
+      msg='Returns an empty list when there is no routerboards to backup'
+    )
+
+    routerboards = [
+      {
+        'name': 'rtr',
+        'backup_password': 'pass',
+        'credentials': {
+          'username': 'user',
+          'hostname': 'host',
+          'port': 1234,
+          'pkey': 'key'
+        }
+      }
+    ]
+
+    self.assertEqual(
+      first=[mock_backup.return_value for _ in routerboards],
+      second=routerboards_backups(
+        routerboards=routerboards,
+        ssh_client_options=ssh_client_options
+      ),
+      msg='Returns the backup for each routerboard in the routerboards passed'
+    )
+
+    self.assertIn(
+      member=[
+        call(
+          device_id=routerboard['name'],
+          backup_password=routerboard['backup_password'],
+          ssh=mock_open_ssh_session.return_value.__enter__.return_value
+        ) for routerboard in routerboards
+      ],
+      container=mock_backup.mock_calls,
+      msg='Backups each routerboard in the routerboards passed'
+    )
+
+    self.assertIn(
+      member=[
+        call(
+          client_options=ssh_client_options,
+          credentials=routerboard['credentials']
+        ) for routerboard in routerboards
+      ],
+      container=mock_open_ssh_session.mock_calls,
+      msg='Opens a ssh session for each routerboard in the routerboards passed'
     )

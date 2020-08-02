@@ -2,11 +2,12 @@ from datetime import datetime, timedelta
 from pathlib import PurePath
 
 import config
+from backup.ssh_client import open_ssh_session
 
 
 class RemotePath:
   def __init__(self, path):
-   self.pure = PurePath(path)
+    self.pure = PurePath(path)
 
   @property
   def without_root(self):
@@ -33,12 +34,12 @@ def script_filename(device_id):
   return '{filename}.rsc'.format(filename=make_filename(prefix=device_id))
 
 
-def backup_command(device_id):
+def backup_command(device_id, backup_password):
   filename = backup_filename(device_id=device_id)
   return {
     'command': str(
       '/system backup save name={filename} password={backup_password}'
-    ).format(filename=filename, backup_password=config.backup_password),
+    ).format(filename=filename, backup_password=backup_password),
     'filename': filename,
   }
 
@@ -51,18 +52,16 @@ def export_command(device_id):
   }
 
 
-def generate_backup(device_id, ssh):
-  return generate_remotely(device_id=device_id, command_maker=backup_command, ssh=ssh)
-
-
-def generate_remotely(device_id, command_maker, ssh):
-  command_made = command_maker(device_id=device_id)
-  ssh.exec_command(command=command_made['command'])
-  return command_made['filename']
+def generate_backup(device_id, backup_password, ssh):
+  current_backup_command = backup_command(device_id=device_id, backup_password=backup_password)
+  ssh.exec_command(command=current_backup_command['command'])
+  return current_backup_command['filename']
 
 
 def generate_export_script(device_id, ssh):
-  return generate_remotely(device_id=device_id, command_maker=export_command, ssh=ssh)
+  current_export_command = export_command(device_id=device_id)
+  ssh.exec_command(command=current_export_command['command'])
+  return current_export_command['filename']
 
 
 def localpath(filename):
@@ -86,9 +85,12 @@ def retrieve_backup_files(filenames, sftp):
   return [retrieve_file(filename=filename, sftp=sftp) for filename in filenames]
 
 
-def backup(device_id, ssh):
+def backup(device_id, backup_password, ssh):
   return retrieve_backup_files(
-    filenames=[generate_backup(device_id=device_id, ssh=ssh), generate_export_script(device_id=device_id, ssh=ssh)],
+    filenames=[
+      generate_backup(device_id=device_id, backup_password=backup_password, ssh=ssh),
+      generate_export_script(device_id=device_id, ssh=ssh)
+    ],
     sftp=ssh.open_sftp()
   )
 
@@ -104,8 +106,8 @@ def timeout(start_time, seconds):
 def assert_remote_file_exists(remotepath, sftp, seconds=10):
   start_time = datetime.now()
   while (
-      not remote_file_exists(remotepath=remotepath, sftp=sftp) and
-      not timeout(start_time=start_time, seconds=seconds)
+    not remote_file_exists(remotepath=remotepath, sftp=sftp) and
+    not timeout(start_time=start_time, seconds=seconds)
   ):
     pass
 
@@ -116,3 +118,18 @@ def remotepath_without_root(remotepath):
   remotepath_str = str(remotepath)
   root = str(remotepath.root)
   return '.' if remotepath_str == root else remotepath_str.replace(root, '', 1).replace('\\', '/')
+
+
+def routerboards_backups(routerboards, ssh_client_options):
+  backups = []
+  for routerboard in routerboards:
+    with open_ssh_session(
+      client_options=ssh_client_options,
+      credentials=routerboard['credentials']
+    ) as ssh:
+      backups.append(backup(
+        device_id=routerboard['name'],
+        backup_password=routerboard['backup_password'],
+        ssh=ssh
+      ))
+  return backups

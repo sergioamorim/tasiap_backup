@@ -1,4 +1,7 @@
 ## tasiap_backup
+[![Build Status](https://travis-ci.org/sergioamorim/tasiap_backup.svg?branch=master)](https://travis-ci.org/sergioamorim/tasiap_backup)
+[![Coverage Status](https://coveralls.io/repos/github/sergioamorim/tasiap_backup/badge.svg?branch=master)](https://coveralls.io/github/sergioamorim/tasiap_backup?branch=master)
+
 This is my sunday project, so it's development won't be fast - it will be 
 a labor of love though.
 
