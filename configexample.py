@@ -1,7 +1,6 @@
-# The actual config file needs to be named config.py
 from paramiko import RSAKey
 
-backup_files_directory_path = '/path/to/save/the/backup/files/with/trailing/slash/'
+backups_directory = '/path/to/save/the/backup/files/with/trailing/slash/'
 
 ssh_client_options = {
   'hosts_keys_filename': '/path/to/known_hosts',

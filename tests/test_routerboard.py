@@ -3,7 +3,6 @@ from pathlib import PurePath
 from unittest import TestCase
 from unittest.mock import patch, MagicMock, call
 
-import config
 from backup.routerboard import make_filename, current_datetime, backup_filename, script_filename, backup_command, \
   export_command, generate_backup, localpath, retrieve_file, retrieve_backup_files, generate_export_script, backup, \
   remote_file_exists, timeout, assert_remote_file_exists, RemotePath, remotepath_without_root, \
@@ -197,29 +196,34 @@ class TestBackupFunctions(TestCase):
 
   def test_localpath(self):
     filename = 'file name'
-    expected_localpath = PurePath('{backup_files_directory_path}/{filename}'.format(
-      backup_files_directory_path=config.backup_files_directory_path,
-      filename=filename
-    ))
+    backups_directory = '/some/directory/'
     self.assertEqual(
-      first=expected_localpath,
-      second=localpath(filename=filename),
-      msg='Returns a PurePath with the filename passed on the directory from backup_files_directory_path on config'
+      first=PurePath('{backups_directory}/{filename}'.format(
+        backups_directory=backups_directory,
+        filename=filename
+      )),
+      second=localpath(filename=filename, backups_directory=backups_directory),
+      msg='Returns a PurePath with the filename passed on the directory from backups_directory passed'
     )
 
   @patch(target='backup.routerboard.assert_remote_file_exists')
   @patch(target='backup.routerboard.localpath', return_value='local path')
   @patch(target='backup.routerboard.RemotePath')
   def test_retrieve_file(self, mock_remotepath, mock_localpath, mock_assert_remote_file_exists):
-    config.backup_files_directory_path = 'backup files directory path'
+    backups_directory = '/backup/files/directory/path/'
     mock_sftp_session = MagicMock()
     filename = 'some filename'
 
     mock_assert_remote_file_exists.return_value = True
     self.assertEqual(
       first=mock_localpath.return_value,
-      second=retrieve_file(filename=filename, sftp=mock_sftp_session),
+      second=retrieve_file(filename=filename, backups_directory=backups_directory, sftp=mock_sftp_session),
       msg='When the remote file exists, returns the localpath of the file retrieved (acquired with localpath function)'
+    )
+    self.assertEqual(
+      first=[call(filename=filename, backups_directory=backups_directory)],
+      second=mock_localpath.mock_calls,
+      msg='Creates the localpath using the filename and backups_directory passed'
     )
     self.assertEqual(
       first=[
@@ -234,32 +238,44 @@ class TestBackupFunctions(TestCase):
       )
     )
 
-    self.assertEqual(
-      first=[call(path=filename), call(), call()],
-      second=mock_remotepath.mock_calls,
+    self.assertIn(
+      member=call(path=filename),
+      container=mock_remotepath.mock_calls,
       msg='A RemotePath is created with the filename passed as path parameter'
     )
 
     mock_assert_remote_file_exists.return_value = False
     self.assertIsNone(
-      obj=retrieve_file(filename, sftp=mock_sftp_session),
+      obj=retrieve_file(
+        filename=filename,
+        backups_directory=backups_directory,
+        sftp=mock_sftp_session
+      ),
       msg='When remote file does not exists, return None'
     )
 
   @patch(target='backup.routerboard.retrieve_file', return_value='filepath')
   def test_retrieve_backup_files(self, mock_retrieve_file):
     filenames = ['filename_a', 'filename_b']
+    backups_directory = '/backups/directory/'
     sftp_session = 'sftp session'
-    expected_behaviour = [call(filename=filename, sftp=sftp_session) for filename in filenames]
 
     self.assertEqual(
       first=[mock_retrieve_file.return_value for _ in range(0, len(filenames))],
-      second=retrieve_backup_files(filenames=filenames, sftp=sftp_session),
+      second=retrieve_backup_files(
+        filenames=filenames,
+        backups_directory=backups_directory,
+        sftp=sftp_session
+      ),
       msg='Returns the filepaths acquired on the retrieve_file function with each filename passed'
     )
 
     self.assertEqual(
-      first=expected_behaviour,
+      first=[call(
+        filename=filename,
+        backups_directory=backups_directory,
+        sftp=sftp_session
+      ) for filename in filenames],
       second=mock_retrieve_file.mock_calls,
       msg='Calls the retrieve_file function with each filename passed as well as with the sftp passed'
     )
@@ -269,21 +285,44 @@ class TestBackupFunctions(TestCase):
   @patch(target='backup.routerboard.generate_export_script', return_value='script filename')
   def test_backup(self, mock_generate_export_script, mock_generate_backup, mock_retrieve_backup_files):
     ssh = MagicMock()
-    device_id = 'device id'
-    backup_password = 'not too secret'
+    routerboard = {
+      'name': 'router-identification',
+      'backup_password': 'pass'
+    }
+    backups_directory = '/path/to/backups/'
 
     self.assertEqual(
       first=mock_retrieve_backup_files.return_value,
-      second=backup(device_id=device_id, backup_password=backup_password, ssh=ssh),
+      second=backup(
+        routerboard=routerboard,
+        backups_directory=backups_directory,
+        ssh=ssh
+      ),
       msg='Returns the list of files that were retrieved (acquired from the function retrieve_backup_files)'
     )
     self.assertEqual(
-      first=[call(device_id=device_id, backup_password=backup_password, ssh=ssh)],
+      first=[call(
+        filenames=[
+          mock_generate_backup.return_value,
+          mock_generate_export_script.return_value
+        ],
+        backups_directory=backups_directory,
+        sftp=ssh.open_sftp.return_value
+      )],
+      second=mock_retrieve_backup_files.mock_calls,
+      msg='Retrieves the backup files generated'
+    )
+    self.assertEqual(
+      first=[call(
+        device_id=routerboard['name'],
+        backup_password=routerboard['backup_password'],
+        ssh=ssh
+      )],
       second=mock_generate_backup.mock_calls,
       msg='The generate_backup function is called with the device_id passed'
     )
     self.assertEqual(
-      first=[call(device_id=device_id, ssh=ssh)],
+      first=[call(device_id=routerboard['name'], ssh=ssh)],
       second=mock_generate_export_script.mock_calls,
       msg='The generate_export_script function is called with the device_id passed'
     )
@@ -387,6 +426,7 @@ class TestBackupFunctions(TestCase):
   @patch(target='backup.routerboard.open_ssh_session')
   @patch(target='backup.routerboard.backup')
   def test_routerboards_backups(self, mock_backup, mock_open_ssh_session):
+    backups_directory = '/backups/'
     ssh_client_options = {
       'hosts_keys_filename': 'tests/hosts_keys',
     }
@@ -394,6 +434,7 @@ class TestBackupFunctions(TestCase):
       first=[],
       second=routerboards_backups(
         routerboards=[],
+        backups_directory=backups_directory,
         ssh_client_options=ssh_client_options
       ),
       msg='Returns an empty list when there is no routerboards to backup'
@@ -416,6 +457,7 @@ class TestBackupFunctions(TestCase):
       first=[mock_backup.return_value for _ in routerboards],
       second=routerboards_backups(
         routerboards=routerboards,
+        backups_directory=backups_directory,
         ssh_client_options=ssh_client_options
       ),
       msg='Returns the backup for each routerboard in the routerboards passed'
@@ -424,8 +466,8 @@ class TestBackupFunctions(TestCase):
     self.assertIn(
       member=[
         call(
-          device_id=routerboard['name'],
-          backup_password=routerboard['backup_password'],
+          routerboard=routerboard,
+          backups_directory=backups_directory,
           ssh=mock_open_ssh_session.return_value.__enter__.return_value
         ) for routerboard in routerboards
       ],

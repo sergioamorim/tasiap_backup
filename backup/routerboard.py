@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 from pathlib import PurePath
 
-import config
 from backup.ssh_client import open_ssh_session
 
 
@@ -64,15 +63,15 @@ def generate_export_script(device_id, ssh):
   return current_export_command['filename']
 
 
-def localpath(filename):
-  return PurePath('{backup_files_directory_path}/{filename}'.format(
-    backup_files_directory_path=config.backup_files_directory_path,
+def localpath(filename, backups_directory):
+  return PurePath('{backups_directory}/{filename}'.format(
+    backups_directory=backups_directory,
     filename=filename
   ))
 
 
-def retrieve_file(filename, sftp):
-  current_localpath = localpath(filename=filename)
+def retrieve_file(filename, backups_directory, sftp):
+  current_localpath = localpath(filename=filename, backups_directory=backups_directory)
   remotepath = RemotePath(path=filename)
   if assert_remote_file_exists(remotepath=remotepath, sftp=sftp):
     sftp.get(remotepath=remotepath.without_root, localpath=str(current_localpath))
@@ -81,16 +80,25 @@ def retrieve_file(filename, sftp):
   return None
 
 
-def retrieve_backup_files(filenames, sftp):
-  return [retrieve_file(filename=filename, sftp=sftp) for filename in filenames]
+def retrieve_backup_files(filenames, backups_directory, sftp):
+  return [retrieve_file(
+    filename=filename,
+    backups_directory=backups_directory,
+    sftp=sftp
+  ) for filename in filenames]
 
 
-def backup(device_id, backup_password, ssh):
+def backup(routerboard, backups_directory, ssh):
   return retrieve_backup_files(
     filenames=[
-      generate_backup(device_id=device_id, backup_password=backup_password, ssh=ssh),
-      generate_export_script(device_id=device_id, ssh=ssh)
+      generate_backup(
+        device_id=routerboard['name'],
+        backup_password=routerboard['backup_password'],
+        ssh=ssh
+      ),
+      generate_export_script(device_id=routerboard['name'], ssh=ssh)
     ],
+    backups_directory=backups_directory,
     sftp=ssh.open_sftp()
   )
 
@@ -120,7 +128,7 @@ def remotepath_without_root(remotepath):
   return '.' if remotepath_str == root else remotepath_str.replace(root, '', 1).replace('\\', '/')
 
 
-def routerboards_backups(routerboards, ssh_client_options):
+def routerboards_backups(routerboards, backups_directory, ssh_client_options):
   backups = []
   for routerboard in routerboards:
     with open_ssh_session(
@@ -128,8 +136,8 @@ def routerboards_backups(routerboards, ssh_client_options):
       credentials=routerboard['credentials']
     ) as ssh:
       backups.append(backup(
-        device_id=routerboard['name'],
-        backup_password=routerboard['backup_password'],
+        routerboard=routerboard,
+        backups_directory=backups_directory,
         ssh=ssh
       ))
   return backups
