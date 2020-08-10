@@ -287,15 +287,14 @@ class TestBackupFunctions(TestCase):
     ssh = MagicMock()
     routerboard = {
       'name': 'router-identification',
+      'backups_directory': '/path/to/backups/',
       'backup_password': 'pass'
     }
-    backups_directory = '/path/to/backups/'
 
     self.assertEqual(
       first=mock_retrieve_backup_files.return_value,
       second=backup(
         routerboard=routerboard,
-        backups_directory=backups_directory,
         ssh=ssh
       ),
       msg='Returns the list of files that were retrieved (acquired from the function retrieve_backup_files)'
@@ -306,7 +305,7 @@ class TestBackupFunctions(TestCase):
           mock_generate_backup.return_value,
           mock_generate_export_script.return_value
         ],
-        backups_directory=backups_directory,
+        backups_directory=routerboard['backups_directory'],
         sftp=ssh.open_sftp.return_value
       )],
       second=mock_retrieve_backup_files.mock_calls,
@@ -426,7 +425,6 @@ class TestBackupFunctions(TestCase):
   @patch(target='backup.routerboard.open_ssh_session')
   @patch(target='backup.routerboard.backup')
   def test_routerboards_backups(self, mock_backup, mock_open_ssh_session):
-    backups_directory = '/backups/'
     ssh_client_options = {
       'hosts_keys_filename': 'tests/hosts_keys',
     }
@@ -434,7 +432,6 @@ class TestBackupFunctions(TestCase):
       first=[],
       second=routerboards_backups(
         routerboards=[],
-        backups_directory=backups_directory,
         ssh_client_options=ssh_client_options
       ),
       msg='Returns an empty list when there is no routerboards to backup'
@@ -444,6 +441,7 @@ class TestBackupFunctions(TestCase):
       {
         'name': 'rtr',
         'backup_password': 'pass',
+        'backups_directory': '/backups/',
         'credentials': {
           'username': 'user',
           'hostname': 'host',
@@ -457,7 +455,6 @@ class TestBackupFunctions(TestCase):
       first=[mock_backup.return_value for _ in routerboards],
       second=routerboards_backups(
         routerboards=routerboards,
-        backups_directory=backups_directory,
         ssh_client_options=ssh_client_options
       ),
       msg='Returns the backup for each routerboard in the routerboards passed'
@@ -467,7 +464,6 @@ class TestBackupFunctions(TestCase):
       member=[
         call(
           routerboard=routerboard,
-          backups_directory=backups_directory,
           ssh=mock_open_ssh_session.return_value.__enter__.return_value
         ) for routerboard in routerboards
       ],

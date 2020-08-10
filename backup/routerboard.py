@@ -88,7 +88,7 @@ def retrieve_backup_files(filenames, backups_directory, sftp):
   ) for filename in filenames]
 
 
-def backup(routerboard, backups_directory, ssh):
+def backup(routerboard, ssh):
   return retrieve_backup_files(
     filenames=[
       generate_backup(
@@ -98,7 +98,7 @@ def backup(routerboard, backups_directory, ssh):
       ),
       generate_export_script(device_id=routerboard['name'], ssh=ssh)
     ],
-    backups_directory=backups_directory,
+    backups_directory=routerboard['backups_directory'],
     sftp=ssh.open_sftp()
   )
 
@@ -128,7 +128,7 @@ def remotepath_without_root(remotepath):
   return '.' if remotepath_str == root else remotepath_str.replace(root, '', 1).replace('\\', '/')
 
 
-def routerboards_backups(routerboards, backups_directory, ssh_client_options):
+def routerboards_backups(routerboards, ssh_client_options):
   backups = []
   for routerboard in routerboards:
     with open_ssh_session(
@@ -137,7 +137,6 @@ def routerboards_backups(routerboards, backups_directory, ssh_client_options):
     ) as ssh:
       backups.append(backup(
         routerboard=routerboard,
-        backups_directory=backups_directory,
         ssh=ssh
       ))
   return backups
