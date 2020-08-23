@@ -1,7 +1,7 @@
 from datetime import datetime
 from unittest import TestCase
 
-from backup.myauth import BackupFile
+from backup.myauth import BackupFile, are_not_corrupted
 
 
 class TestBackupFileClass(TestCase):
@@ -49,19 +49,19 @@ class TestBackupFileClass(TestCase):
       msg='Sets the size to the integer version of the size passed if it is an string'
     )
 
-  def test_is_bigger_than(self):
-    self.assertTrue(
-      expr=self.backup_file.is_bigger_than(
+  def test_is_smaller_than(self):
+    self.assertFalse(
+      expr=self.backup_file.is_smaller_than(
         other=BackupFile(
           filename='backup-2020-08-08-0440.tgz',
           size=self.backup_file.size - 1
         )
       ),
-      msg='Returns True when it is bigger than the backup file passed'
+      msg='Returns False when it is bigger than the backup file passed'
     )
 
     self.assertFalse(
-      expr=self.backup_file.is_bigger_than(
+      expr=self.backup_file.is_smaller_than(
         other=BackupFile(
           filename='backup-2020-08-08-0441.tgz',
           size=self.backup_file.size
@@ -70,14 +70,14 @@ class TestBackupFileClass(TestCase):
       msg='Returns False when it has the same size of the backup file passed'
     )
 
-    self.assertFalse(
-      expr=self.backup_file.is_bigger_than(
+    self.assertTrue(
+      expr=self.backup_file.is_smaller_than(
         other=BackupFile(
           filename='backup-2020-08-08-0442.tgz',
           size=self.backup_file.size + 1
         )
       ),
-      msg='Returns False when it is smaller than the backup file passed'
+      msg='Returns True when it is smaller than the backup file passed'
     )
 
   def test_is_newer_than(self):
@@ -134,4 +134,96 @@ class TestBackupFileClass(TestCase):
       first='gz',
       second=self.backup_file.extension,
       msg='Returns only the last extension of the file explicitly defined in the filename'
+    )
+
+  def test_creation(self):
+    self.assertEqual(
+      first=datetime.strptime(self.backup_file.creation_string_on_filename, '%Y-%m-%d-%H%M'),
+      second=self.backup_file.creation,
+      msg='Returns a datetime from the time and date written in the filename'
+    )
+
+    self.backup_file.filename = 'different-name-format-with-2020-08-23-0445-the-date-and-time-written-in-it'
+    self.assertEqual(
+      first=datetime.strptime(self.backup_file.creation_string_on_filename, '%Y-%m-%d-%H%M'),
+      second=self.backup_file.creation,
+      msg='Returns a datetime from the time and date written in the filename even with an unusual filename format'
+    )
+
+    self.backup_file.filename = 'filename-without-date-and-time'
+    self.assertIsNone(
+      obj=self.backup_file.creation,
+      msg='Returns None when the filename does not have a date and time written in it'
+    )
+
+
+class TestMyauthFunctions(TestCase):
+
+  def test_are_not_corrupted(self):
+    self.assertTrue(
+      expr=are_not_corrupted(backup_files=[]),
+      msg='Returns True when the list of files is empty'
+    )
+    self.assertTrue(
+      expr=are_not_corrupted(backup_files=[BackupFile(
+        filename='backup-2020-08-23-0446.tgz',
+        size='1'
+      )]),
+      msg='Returns True when the list contains at least one BackupFile with a valid filename and size'
+    )
+    self.assertFalse(
+      expr=are_not_corrupted(backup_files=[
+        BackupFile(
+          filename='backup-2020-08-23-0448.tgz',
+          size='1'
+        ),
+        BackupFile(
+          filename='backup-2020-08-23-0447.tgz',
+          size='0'
+        )
+      ]),
+      msg="Returns False when one of the BackupFile's in the list has size 0"
+    )
+    self.assertFalse(
+      expr=are_not_corrupted(backup_files=[
+        BackupFile(
+          filename='backup-2020-08-23-0446.tgz',
+          size='1'
+        ),
+        BackupFile(
+          filename='backup-2020-08-23-0447.tgz',
+          size='2'
+        ),
+        BackupFile(
+          filename='backup-2020-08-23-0448.tgz',
+          size='1'
+        ),
+        BackupFile(
+          filename='backup-2020-08-23-0449.tgz',
+          size='4'
+        )
+      ]),
+      msg="Returns False when one of the BackupFile's in the list is newer than another yet is smaller than this other"
+    )
+
+    self.assertTrue(
+      expr=are_not_corrupted(backup_files=[
+        BackupFile(
+          filename='backup-2020-08-23-0446.tgz',
+          size='1'
+        ),
+        BackupFile(
+          filename='backup-2020-08-23-0447.tgz',
+          size='2'
+        ),
+        BackupFile(
+          filename='backup-2020-08-23-0448.tgz',
+          size='2'
+        ),
+        BackupFile(
+          filename='backup-2020-08-23-0449.tgz',
+          size='4'
+        )
+      ]),
+      msg="Returns True when the BackupFile's that are newer are bigger (or equal in size) too"
     )

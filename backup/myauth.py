@@ -17,7 +17,9 @@ class BackupFile:
 
   @property
   def creation(self):
-    return datetime.strptime(self.filename, 'backup-%Y-%m-%d-%H%M.tgz')
+    if creation_string := self.creation_string_on_filename:
+      return datetime.strptime(creation_string, '%Y-%m-%d-%H%M')
+    return None
 
   @property
   def extension(self):
@@ -25,8 +27,8 @@ class BackupFile:
       return file_extension[0]
     return None
 
-  def is_bigger_than(self, other):
-    return self.size > other.size
+  def is_smaller_than(self, other):
+    return self.size < other.size
 
   def is_newer_than(self, other):
     return self.creation > other.creation
@@ -39,3 +41,18 @@ class BackupFile:
     ):
       return creation_string[0]
     return None
+
+
+def are_not_corrupted(backup_files):
+  if backup_files:
+    backup_file = backup_files.pop()
+    if not backup_file.size:
+      return False
+    for other_backup_file in backup_files:
+      if (
+        backup_file.is_newer_than(other=other_backup_file) and
+        backup_file.is_smaller_than(other=other_backup_file)
+      ):
+        return False
+    return are_not_corrupted(backup_files=backup_files)
+  return True
