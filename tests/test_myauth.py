@@ -1,7 +1,7 @@
 from datetime import datetime
 from unittest import TestCase
 
-from backup.myauth import BackupFile, are_not_corrupted
+from backup.myauth import BackupFile, are_not_corrupted, is_corrupted, is_smaller_than_older
 
 
 class TestBackupFileClass(TestCase):
@@ -180,6 +180,10 @@ class TestMyauthFunctions(TestCase):
         BackupFile(
           filename='backup-2020-08-23-0447.tgz',
           size='0'
+        ),
+        BackupFile(
+          filename='backup-2020-08-23-0449.tgz',
+          size='2'
         )
       ]),
       msg="Returns False when one of the BackupFile's in the list has size 0"
@@ -226,4 +230,226 @@ class TestMyauthFunctions(TestCase):
         )
       ]),
       msg="Returns True when the BackupFile's that are newer are bigger (or equal in size) too"
+    )
+
+    self.assertFalse(
+      expr=are_not_corrupted(backup_files=[
+        BackupFile(
+          filename='backup-2020-08-23-0448.tgz',
+          size='1'
+        ),
+        BackupFile(
+          filename='backup-2020-08-23-0449.tar.gz',
+          size='2'
+        ),
+        BackupFile(
+          filename='backup-2020-08-23-0447.tgz',
+          size='1'
+        )
+      ]),
+      msg="Returns False when one of the BackupFile's in the list has an extension different than .tgz"
+    )
+
+  def test_is_corrupted(self):
+    self.assertTrue(
+      expr=is_corrupted(
+        backup_file=BackupFile(
+          filename='backup-2020-08-30-0444.tgz',
+          size='2'
+        ),
+        backup_files=[
+          BackupFile(
+            filename='backup-2020-08-30-0441.tgz',
+            size='1'
+          ),
+          BackupFile(
+            filename='backup-2020-08-30-0442.tgz',
+            size='2'
+          ),
+          BackupFile(
+            filename='backup-2020-08-30-0443.tgz',
+            size='3'
+          )
+        ]
+      ),
+      msg=str(
+        "Returns False when the backup file passed is newer than a backup file from the list passed yet is smaller "
+        "than this backup file from the list"
+      )
+    )
+
+    self.assertFalse(
+      expr=is_corrupted(
+        backup_file=BackupFile(
+          filename='backup-2020-08-30-0440.tgz',
+          size='1'
+        ),
+        backup_files=[]
+      ),
+      msg=str(
+        'Returns False when the list of backup files passed is empty, the backup file passed has a size greater than '
+        'zero and has the .tgz extension'
+      )
+    )
+
+    self.assertTrue(
+      expr=is_corrupted(
+        backup_file=BackupFile(
+          filename='backup-2020-08-30-0455.tar.gz',
+          size='1'
+        ),
+        backup_files=[]
+      ),
+      msg=str(
+        'Returns True when backup file passed does not have a .tgz extension'
+      )
+    )
+
+    self.assertTrue(
+      expr=is_corrupted(
+        backup_file=BackupFile(
+          filename='backup-2020-08-30-0456.tgz',
+          size='0'
+        ),
+        backup_files=[]
+      ),
+      msg=str(
+        'Returns True when backup file passed has size zero'
+      )
+    )
+
+    self.assertFalse(
+      expr=is_corrupted(
+        backup_file=BackupFile(
+          filename='backup-2020-08-30-0448.tgz',
+          size='4'
+        ),
+        backup_files=[
+          BackupFile(
+            filename='backup-2020-08-30-0445.tgz',
+            size='1'
+          ),
+          BackupFile(
+            filename='backup-2020-08-30-0446.tgz',
+            size='2'
+          ),
+          BackupFile(
+            filename='backup-2020-08-30-0447.tgz',
+            size='3'
+          ),
+          BackupFile(
+            filename='backup-2020-08-30-0453.tgz',
+            size='5'
+          )
+        ]
+      ),
+      msg=str(
+        'Returns False when the backup file passed is only bigger than the older files in the list, has a size greater '
+        'than zero and has the .tgz extension'
+      )
+    )
+
+    self.assertFalse(
+      expr=is_corrupted(
+        backup_file=BackupFile(
+          filename='backup-2020-08-30-0452.tgz',
+          size='3'
+        ),
+        backup_files=[
+          BackupFile(
+            filename='backup-2020-08-30-0449.tgz',
+            size='1'
+          ),
+          BackupFile(
+            filename='backup-2020-08-30-0450.tgz',
+            size='2'
+          ),
+          BackupFile(
+            filename='backup-2020-08-30-0451.tgz',
+            size='3'
+          ),
+          BackupFile(
+            filename='backup-2020-08-30-0454.tgz',
+            size='4'
+          )
+        ]
+      ),
+      msg=str(
+        'Returns False when the backup file passed is only bigger or equal in size than the older files in the list, '
+        'has a size greater than zero and has the .tgz extension'
+      )
+    )
+
+  def test_is_smaller_than_older(self):
+    self.assertFalse(
+      expr=is_smaller_than_older(
+        backup_file=BackupFile(
+          filename='backup-2020-08-30-0452.tgz',
+          size='3'
+        ),
+        backup_files=[]
+      ),
+      msg='Returns False when the list of backup files is empty'
+    )
+
+    self.assertFalse(
+      expr=is_smaller_than_older(
+        backup_file=BackupFile(
+          filename='backup-2020-08-30-0452.tgz',
+          size='3'
+        ),
+        backup_files=[
+          BackupFile(
+            filename='backup-2020-08-30-0449.tgz',
+            size='1'
+          ),
+          BackupFile(
+            filename='backup-2020-08-30-0450.tgz',
+            size='2'
+          ),
+          BackupFile(
+            filename='backup-2020-08-30-0451.tgz',
+            size='3'
+          ),
+          BackupFile(
+            filename='backup-2020-08-30-0454.tgz',
+            size='4'
+          )
+        ]
+      ),
+      msg=str(
+        'Returns False when the only backup files on the list that are bigger then the backup file passed are the '
+        'newer ones'
+      )
+    )
+
+    self.assertTrue(
+      expr=is_smaller_than_older(
+        backup_file=BackupFile(
+          filename='backup-2020-08-30-0452.tgz',
+          size='2'
+        ),
+        backup_files=[
+          BackupFile(
+            filename='backup-2020-08-30-0449.tgz',
+            size='1'
+          ),
+          BackupFile(
+            filename='backup-2020-08-30-0450.tgz',
+            size='2'
+          ),
+          BackupFile(
+            filename='backup-2020-08-30-0451.tgz',
+            size='3'
+          ),
+          BackupFile(
+            filename='backup-2020-08-30-0454.tgz',
+            size='4'
+          )
+        ]
+      ),
+      msg=str(
+        'Returns True when there are backup files on the list that are bigger then the backup file passed and are also '
+        'older than it is'
+      )
     )

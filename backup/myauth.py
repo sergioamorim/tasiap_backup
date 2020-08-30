@@ -45,14 +45,32 @@ class BackupFile:
 
 def are_not_corrupted(backup_files):
   if backup_files:
-    backup_file = backup_files.pop()
-    if not backup_file.size:
-      return False
-    for other_backup_file in backup_files:
-      if (
-        backup_file.is_newer_than(other=other_backup_file) and
-        backup_file.is_smaller_than(other=other_backup_file)
-      ):
-        return False
-    return are_not_corrupted(backup_files=backup_files)
+    return (
+      not is_corrupted(backup_file=backup_files.pop(), backup_files=backup_files.copy())
+      and are_not_corrupted(backup_files=backup_files)
+    )
+
   return True
+
+
+def is_smaller_than_older(backup_file, backup_files):
+  if backup_files:
+    return (
+      (
+        backup_file.is_newer_than(
+          other=(other_backup_file := backup_files.pop())
+        )
+        and backup_file.is_smaller_than(other=other_backup_file)
+      )
+      or is_smaller_than_older(backup_file=backup_file, backup_files=backup_files)
+    )
+
+  return False
+
+
+def is_corrupted(backup_file, backup_files):
+  return (
+    not backup_file.size
+    or backup_file.extension != 'tgz'
+    or is_smaller_than_older(backup_file=backup_file, backup_files=backup_files)
+  )
