@@ -74,3 +74,18 @@ def is_corrupted(backup_file, backup_files):
     or backup_file.extension != 'tgz'
     or is_smaller_than_older(backup_file=backup_file, backup_files=backup_files)
   )
+
+
+def newest_backup(backup_files):
+  return sorted(
+    backup_files,
+    key=lambda backup_file: backup_file.creation,
+    reverse=True
+  )[0] if backup_files else None
+
+
+def disposable_backups(backup_files, keeping_quantity):
+  return sorted(
+    backup_files,
+    key=lambda backup_file: backup_file.creation
+  )[:len(backup_files) - keeping_quantity]

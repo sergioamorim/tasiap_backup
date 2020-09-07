@@ -1,7 +1,8 @@
 from datetime import datetime
 from unittest import TestCase
 
-from backup.myauth import BackupFile, are_not_corrupted, is_corrupted, is_smaller_than_older
+from backup.myauth import BackupFile, are_not_corrupted, is_corrupted, is_smaller_than_older, newest_backup, \
+  disposable_backups
 
 
 class TestBackupFileClass(TestCase):
@@ -452,4 +453,103 @@ class TestMyauthFunctions(TestCase):
         'Returns True when there are backup files on the list that are bigger then the backup file passed and are also '
         'older than it is'
       )
+    )
+
+  def test_newest_backup(self):
+    self.assertIsNone(
+      obj=newest_backup(backup_files=[]),
+      msg='Returns None when the list of backup files is empty'
+    )
+
+    old_backup_file_a = BackupFile(
+      filename='backup-2020-09-06-0448.tgz',
+      size='1'
+    )
+    old_backup_file_b = BackupFile(
+      filename='backup-2020-09-06-0449.tgz',
+      size='1'
+    )
+    new_backup_file = BackupFile(
+      filename='backup-2020-09-06-0450.tgz',
+      size='1'
+    )
+    self.assertEqual(
+      first=new_backup_file,
+      second=newest_backup(
+        backup_files=[old_backup_file_a, new_backup_file, old_backup_file_b]
+      ),
+      msg='Returns the newest backup file on the list of backup files passed'
+    )
+
+  def test_disposable_backups(self):
+    self.assertEqual(
+      first=[],
+      second=disposable_backups(backup_files=[], keeping_quantity=0),
+      msg='Returns an empty list when the list of backup files is empty'
+    )
+    self.assertEqual(
+      first=[],
+      second=disposable_backups(
+        backup_files=[BackupFile(filename='backup-2020-09-06-0440.tgz', size='1')],
+        keeping_quantity=1
+      ),
+      msg=str(
+        'Returns an empty list when the list of backup files has less than or exactly the keeping quantity of '
+        'backup_files'
+      )
+    )
+    self.assertEqual(
+      first=[],
+      second=disposable_backups(
+        backup_files=[
+          BackupFile(filename='backup-2020-09-06-0441.tgz', size='1')
+        ],
+        keeping_quantity=2
+      ),
+      msg=str(
+        'Returns an empty list when the list of backup files has less than or exactly the keeping quantity of '
+        'backup_files'
+      )
+    )
+    self.assertEqual(
+      first=[],
+      second=disposable_backups(
+        backup_files=[
+          BackupFile(filename='backup-2020-09-06-0442.tgz', size='1'),
+          BackupFile(filename='backup-2020-09-06-0443.tgz', size='1')
+        ],
+        keeping_quantity=2
+      ),
+      msg=str(
+        'Returns an empty list when the list of backup files has less than or exactly the keeping quantity of '
+        'backup_files'
+      )
+    )
+
+    disposable = [BackupFile(filename='backup-2020-09-06-0444.tgz', size='1')]
+    self.assertEqual(
+      first=disposable,
+      second=disposable_backups(backup_files=disposable, keeping_quantity=0),
+      msg='Returns the list of backup files that exceeds the keeping quantity specified'
+    )
+
+    old_backup_file_a = BackupFile(
+      filename='backup-2020-09-06-0445.tgz',
+      size='1'
+    )
+    old_backup_file_b = BackupFile(
+      filename='backup-2020-09-06-0446.tgz',
+      size='1'
+    )
+    new_backup_file = BackupFile(
+      filename='backup-2020-09-06-0447.tgz',
+      size='1'
+    )
+    self.assertEqual(
+      first=[old_backup_file_a, old_backup_file_b],
+      second=disposable_backups(
+        backup_files=[old_backup_file_a, new_backup_file, old_backup_file_b],
+        keeping_quantity=1
+      ),
+      msg='Returns the oldest backup files that exceeds the keeping quantity of backups files specified'
     )
