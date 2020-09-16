@@ -7,6 +7,13 @@ class BackupFile:
     self.filename = filename
     self.size = size
 
+  def __eq__(self, other):
+    return (
+      type(self) == type(other)
+      and self.filename == other.filename
+      and self.size == other.size
+    )
+
   @property
   def size(self):
     return self.__size
@@ -89,3 +96,12 @@ def disposable_backups(backup_files, keeping_quantity):
     backup_files,
     key=lambda backup_file: backup_file.creation
   )[:len(backup_files) - keeping_quantity]
+
+
+def backup_files_found(sftp_attributes_from_files):
+  return [
+    BackupFile(
+      filename=sftp_attributes.filename,
+      size=sftp_attributes.st_size
+    ) for sftp_attributes in sftp_attributes_from_files
+  ]

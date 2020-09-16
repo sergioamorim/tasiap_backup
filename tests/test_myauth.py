@@ -2,7 +2,7 @@ from datetime import datetime
 from unittest import TestCase
 
 from backup.myauth import BackupFile, are_not_corrupted, is_corrupted, is_smaller_than_older, newest_backup, \
-  disposable_backups
+  disposable_backups, backup_files_found
 
 
 class TestBackupFileClass(TestCase):
@@ -32,6 +32,37 @@ class TestBackupFileClass(TestCase):
       first='tgz',
       second=self.backup_file.extension,
       msg='Has an extension property referring to the extension of the file written in the filename'
+    )
+
+  def test_eq(self):
+    self.assertNotEqual(
+      first='',
+      second=self.backup_file,
+      msg='Can be compared to a different type of object but is not equal'
+    )
+    self.assertNotEqual(
+      first=BackupFile(
+        filename=self.backup_file.filename + '_different_filename',
+        size=self.backup_file.size
+      ),
+      second=self.backup_file,
+      msg='When the filename is different it is not equal'
+    )
+    self.assertNotEqual(
+      first=BackupFile(
+        filename=self.backup_file.filename,
+        size=self.backup_file.size + 1
+      ),
+      second=self.backup_file,
+      msg='When the size is different it is not equal'
+    )
+    self.assertEqual(
+      first=BackupFile(
+        filename=self.backup_file.filename,
+        size=self.backup_file.size
+      ),
+      second=self.backup_file,
+      msg='When it has the same filename and size it can be treated as equal'
     )
 
   def test_size(self):
@@ -552,4 +583,24 @@ class TestMyauthFunctions(TestCase):
         keeping_quantity=1
       ),
       msg='Returns the oldest backup files that exceeds the keeping quantity of backups files specified'
+    )
+
+  def test_backup_files_found(self):
+    self.assertEqual(
+      first=[],
+      second=backup_files_found(sftp_attributes_from_files=[]),
+      msg='Returns an empty list when the list of sftp attributes is empty'
+    )
+
+    class SFTPAttributesMock:
+      def __init__(self, filename, st_size):
+        self.filename = filename
+        self.st_size = st_size
+
+    file_a = SFTPAttributesMock(filename='filename', st_size=1)
+
+    self.assertEqual(
+      first=[BackupFile(filename=file_a.filename, size=file_a.st_size)],
+      second=backup_files_found(sftp_attributes_from_files=[file_a]),
+      msg='Returns a list with a backup file for each SFTPAttributes object in the list passed'
     )
