@@ -1,5 +1,5 @@
 from datetime import datetime
-from re import findall
+from re import findall, match
 
 
 class BackupFile:
@@ -103,5 +103,12 @@ def backup_files_found(sftp_attributes_from_files):
     BackupFile(
       filename=sftp_attributes.filename,
       size=sftp_attributes.st_size
-    ) for sftp_attributes in sftp_attributes_from_files
+    ) for sftp_attributes in filter(
+      lambda sftp_attributes: is_valid_backup_filename(filename=sftp_attributes.filename),
+      sftp_attributes_from_files
+    )
   ]
+
+
+def is_valid_backup_filename(filename):
+  return match(string=filename, pattern=r'backup.+\.+')

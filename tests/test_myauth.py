@@ -2,7 +2,7 @@ from datetime import datetime
 from unittest import TestCase
 
 from backup.myauth import BackupFile, are_not_corrupted, is_corrupted, is_smaller_than_older, newest_backup, \
-  disposable_backups, backup_files_found
+  disposable_backups, backup_files_found, is_valid_backup_filename
 
 
 class TestBackupFileClass(TestCase):
@@ -598,9 +598,27 @@ class TestMyauthFunctions(TestCase):
         self.st_size = st_size
 
     file_a = SFTPAttributesMock(filename='filename', st_size=1)
+    file_b = SFTPAttributesMock(
+      filename='backup-2020-09-27-0441.tgz',
+      st_size=2
+    )
 
     self.assertEqual(
-      first=[BackupFile(filename=file_a.filename, size=file_a.st_size)],
-      second=backup_files_found(sftp_attributes_from_files=[file_a]),
-      msg='Returns a list with a backup file for each SFTPAttributes object in the list passed'
+      first=[BackupFile(filename=file_b.filename, size=file_b.st_size)],
+      second=backup_files_found(sftp_attributes_from_files=[file_a, file_b]),
+      msg=str(
+        'Returns a list with a backup file for each SFTPAttributes object in the list passed that has the filename '
+        'starting with backup and with some extension'
+      )
+    )
+
+  def test_is_valid_backup_filename(self):
+    self.assertFalse(
+      expr=is_valid_backup_filename(filename='.lastbackup'),
+      msg='Returns False for the hidden file .lastbackup that usually is found on the backups directory'
+    )
+
+    self.assertTrue(
+      expr=is_valid_backup_filename(filename='backup-2020-09-27-0440.tgz'),
+      msg='Returns False for the hidden file .lastbackup that usually is found on the backups directory'
     )
