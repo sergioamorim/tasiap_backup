@@ -1,5 +1,8 @@
 from datetime import datetime
+from pathlib import PurePath
 from re import findall, match
+
+from backup.ssh_client import localpath
 
 
 class BackupFile:
@@ -112,3 +115,64 @@ def backup_files_found(sftp_attributes_from_files):
 
 def is_valid_backup_filename(filename):
   return match(string=filename, pattern=r'backup.+\.+')
+
+
+def retrieved_file(current_remotepath, current_localpath, sftp):
+  sftp.get(remotepath=current_remotepath, localpath=current_localpath)
+  return current_localpath
+
+
+def remotepath(remote_directory, filename):
+  return PurePath(
+    '{remote_directory}{filename}'.format(
+      remote_directory=remote_directory,
+      filename=filename
+    )
+  )
+
+
+def labeled_backups(backup_files, keeping_quantity):
+  return {
+    'newest_backup': newest_backup(backup_files=backup_files),
+    'disposable_backups': disposable_backups(
+      backup_files=backup_files,
+      keeping_quantity=keeping_quantity
+    )
+  }
+
+
+def deleted_remote_backup_files(remote_directory, backup_files, sftp):
+  return [
+    deleted_remote_file(
+      file_remotepath=remotepath(
+        remote_directory=remote_directory,
+        filename=backup_file.filename),
+      sftp=sftp
+    ) for backup_file in backup_files
+  ]
+
+
+def deleted_remote_file(file_remotepath, sftp):
+  sftp.unlink(path=file_remotepath)
+  return file_remotepath
+
+
+def retrieved_and_deleted_backups(current_labeled_backups, backup_settings, sftp):
+  return {
+    'retrieved_backup': retrieved_file(
+      current_remotepath=remotepath(
+        remote_directory=backup_settings['remote_backups_directory'],
+        filename=current_labeled_backups['newest_backup']
+      ),
+      current_localpath=localpath(
+        backups_directory=backup_settings['local_backups_directory'],
+        filename=current_labeled_backups['newest_backup'].filename
+      ),
+      sftp=sftp
+    ),
+    'deleted_backups': deleted_remote_backup_files(
+      remote_directory=backup_settings['remote_backups_directory'],
+      backup_files=current_labeled_backups['disposable_backups'],
+      sftp=sftp
+    )
+  }

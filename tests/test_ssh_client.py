@@ -1,7 +1,8 @@
+from pathlib import PurePath
 from unittest import TestCase
 from unittest.mock import MagicMock, call, patch
 
-from backup.ssh_client import open_ssh_session, close_ssh_session, setup_client, active_ssh_session
+from backup.ssh_client import open_ssh_session, close_ssh_session, setup_client, active_ssh_session, localpath
 
 
 class TestFunctions(TestCase):
@@ -94,4 +95,16 @@ class TestFunctions(TestCase):
       ],
       second=MockSSHClient.mock_calls,
       msg='Loads the host keys from the client_options passed'
+    )
+
+  def test_localpath(self):
+    filename = 'file name'
+    backups_directory = '/some/directory/'
+    self.assertEqual(
+      first=PurePath('{backups_directory}/{filename}'.format(
+        backups_directory=backups_directory,
+        filename=filename
+      )),
+      second=localpath(filename=filename, backups_directory=backups_directory),
+      msg='Returns a PurePath with the filename passed on the directory from backups_directory passed'
     )

@@ -1,8 +1,17 @@
 from datetime import datetime
+from pathlib import PurePath
 from unittest import TestCase
+from unittest.mock import MagicMock, call
 
 from backup.myauth import BackupFile, are_not_corrupted, is_corrupted, is_smaller_than_older, newest_backup, \
-  disposable_backups, backup_files_found, is_valid_backup_filename
+  disposable_backups, backup_files_found, is_valid_backup_filename, retrieved_file, remotepath, labeled_backups, \
+  retrieved_and_deleted_backups, deleted_remote_backup_files, deleted_remote_file
+
+
+class SFTPAttributesMock:
+  def __init__(self, filename, st_size):
+    self.filename = filename
+    self.st_size = st_size
 
 
 class TestBackupFileClass(TestCase):
@@ -592,11 +601,6 @@ class TestMyauthFunctions(TestCase):
       msg='Returns an empty list when the list of sftp attributes is empty'
     )
 
-    class SFTPAttributesMock:
-      def __init__(self, filename, st_size):
-        self.filename = filename
-        self.st_size = st_size
-
     file_a = SFTPAttributesMock(filename='filename', st_size=1)
     file_b = SFTPAttributesMock(
       filename='backup-2020-09-27-0441.tgz',
@@ -621,4 +625,142 @@ class TestMyauthFunctions(TestCase):
     self.assertTrue(
       expr=is_valid_backup_filename(filename='backup-2020-09-27-0440.tgz'),
       msg='Returns False for the hidden file .lastbackup that usually is found on the backups directory'
+    )
+
+  def test_retrieved_file(self):
+    current_remotepath = MagicMock()
+    current_localpath = MagicMock()
+    sftp = MagicMock()
+
+    self.assertEqual(
+      first=current_localpath,
+      second=retrieved_file(
+        current_remotepath=current_remotepath,
+        current_localpath=current_localpath,
+        sftp=sftp
+      ),
+      msg='Returns the localpath of the file retrieved'
+    )
+    self.assertIn(
+      member=call.get(
+        remotepath=current_remotepath,
+        localpath=current_localpath
+      ),
+      container=sftp.mock_calls,
+      msg='Gets the remote file to the localpath using the sftp passed'
+    )
+
+  def test_remotepath(self):
+    remote_directory = '/some/directory/'
+    filename = 'file.ext'
+    self.assertEqual(
+      first=PurePath('/some/directory/file.ext'),
+      second=remotepath(
+        remote_directory=remote_directory,
+        filename=filename
+      )
+    )
+
+  def test_labeled_backups(self):
+    newest_backup_file = BackupFile(
+      filename='backup-2020-09-29-0442.tgz',
+      size=3
+    )
+    ordinary_backup_file = BackupFile(
+      filename='backup-2020-09-29-0441.tgz',
+      size=2
+    )
+    disposable_backup_file = BackupFile(
+      filename='backup-2020-09-29-0440.tgz',
+      size=1
+    )
+
+    self.assertEqual(
+      first={
+        'newest_backup': newest_backup_file,
+        'disposable_backups': [disposable_backup_file]
+      },
+      second=labeled_backups(
+        backup_files=[
+          ordinary_backup_file,
+          newest_backup_file,
+          disposable_backup_file
+        ],
+        keeping_quantity=2
+      ),
+      msg=str(
+        'Returns a dict with the the newest and the disposable backups on the list of backups passed based on the '
+        'keeping quantity passed'
+      )
+    )
+
+  def test_retrieved_and_deleted_backups(self):
+    backup_settings = {
+      'remote_backups_directory': '/remote/directory/',
+      'local_backups_directory': 'C:\\Users\\someone\\'
+    }
+
+    current_labeled_backups = {
+      'newest_backup': BackupFile(
+        filename='backup-2020-09-29-0444.tgz',
+        size=5
+      ),
+      'disposable_backups': [
+        BackupFile(filename='backup-2020-09-29-0443.tgz', size=4)
+      ]
+    }
+
+    self.assertEqual(
+      first={
+        'retrieved_backup': PurePath('C:\\Users\\someone\\backup-2020-09-29-0444.tgz'),
+        'deleted_backups': [PurePath('/remote/directory/backup-2020-09-29-0443.tgz')]
+      },
+      second=retrieved_and_deleted_backups(
+        current_labeled_backups=current_labeled_backups,
+        backup_settings=backup_settings,
+        sftp=MagicMock())
+    )
+
+  def test_deleted_remote_backup_files(self):
+    remote_backups_directory = '/admin/backup/'
+    backup_files = [BackupFile(filename='backup-2020-10-11-0440.tgz', size=1)]
+    sftp = MagicMock()
+
+    self.assertEqual(
+      first=[PurePath('/admin/backup/backup-2020-10-11-0440.tgz')],
+      second=deleted_remote_backup_files(
+        remote_directory=remote_backups_directory,
+        backup_files=backup_files,
+        sftp=sftp
+      ),
+      msg='Returns the disposable backup files that were sent to be deleted remotely'
+    )
+    self.assertIn(
+      member=[
+        call.unlink(
+          path=remotepath(
+            remote_directory=remote_backups_directory,
+            filename=backup_file.filename
+          )
+        ) for backup_file in backup_files
+      ],
+      container=sftp.mock_calls,
+      msg='Each one of the backup file passed is unlinked from the the remote backups directory'
+    )
+
+  def test_deleted_remote_file(self):
+    file_remotepath = PurePath('/admin/backup/backup-2020-10-11-0440.tgz')
+    sftp = MagicMock()
+
+    self.assertEqual(
+      first=file_remotepath,
+      second=deleted_remote_file(
+        file_remotepath=file_remotepath,
+        sftp=sftp
+      )
+    )
+    self.assertIn(
+      member=[call.unlink(path=file_remotepath)],
+      container=sftp.mock_calls,
+      msg='The backup file passed is unlinked from the the remote backups directory'
     )

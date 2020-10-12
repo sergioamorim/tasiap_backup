@@ -4,7 +4,7 @@ from unittest import TestCase
 from unittest.mock import patch, MagicMock, call
 
 from backup.routerboard import make_filename, current_datetime, backup_filename, script_filename, backup_command, \
-  export_command, generate_backup, localpath, retrieve_file, retrieve_backup_files, generate_export_script, backup, \
+  export_command, generate_backup, retrieve_file, retrieve_backup_files, generate_export_script, backup, \
   remote_file_exists, timeout, assert_remote_file_exists, RemotePath, remotepath_without_root, \
   routerboards_backups
 
@@ -192,18 +192,6 @@ class TestBackupFunctions(TestCase):
       first=expected_behaviour,
       second=mock_ssh.mock_calls,
       msg='Calls the exec_command on the ssh passed with the command acquired from the backup_command function'
-    )
-
-  def test_localpath(self):
-    filename = 'file name'
-    backups_directory = '/some/directory/'
-    self.assertEqual(
-      first=PurePath('{backups_directory}/{filename}'.format(
-        backups_directory=backups_directory,
-        filename=filename
-      )),
-      second=localpath(filename=filename, backups_directory=backups_directory),
-      msg='Returns a PurePath with the filename passed on the directory from backups_directory passed'
     )
 
   @patch(target='backup.routerboard.assert_remote_file_exists')

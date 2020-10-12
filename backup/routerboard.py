@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from pathlib import PurePath
 
-from backup.ssh_client import open_ssh_session
+from backup.ssh_client import open_ssh_session, localpath
 
 
 class RemotePath:
@@ -61,13 +61,6 @@ def generate_export_script(device_id, ssh):
   current_export_command = export_command(device_id=device_id)
   ssh.exec_command(command=current_export_command['command'])
   return current_export_command['filename']
-
-
-def localpath(filename, backups_directory):
-  return PurePath('{backups_directory}/{filename}'.format(
-    backups_directory=backups_directory,
-    filename=filename
-  ))
 
 
 def retrieve_file(filename, backups_directory, sftp):

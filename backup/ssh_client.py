@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from pathlib import PurePath
 
 from paramiko import SSHClient
 
@@ -34,3 +35,10 @@ def setup_client(client_options):
 def close_ssh_session(ssh):
   ssh.exec_command(command='quit')
   ssh.close()
+
+
+def localpath(filename, backups_directory):
+  return PurePath('{backups_directory}/{filename}'.format(
+    backups_directory=backups_directory,
+    filename=filename
+  ))
