@@ -47,7 +47,7 @@ def close_ssh_session(ssh):
 
 
 def localpath(filename, backups_directory):
-  return PurePath('{backups_directory}/{filename}'.format(
+  return PurePath('{backups_directory}{filename}'.format(
     backups_directory=backups_directory,
     filename=filename
   ))
