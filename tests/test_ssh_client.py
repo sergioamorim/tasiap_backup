@@ -2,7 +2,8 @@ from pathlib import PurePath
 from unittest import TestCase
 from unittest.mock import MagicMock, call, patch
 
-from backup.ssh_client import open_ssh_session, close_ssh_session, setup_client, active_ssh_session, localpath
+from backup.ssh_client import open_ssh_session, close_ssh_session, setup_client, active_ssh_session, localpath, \
+  open_sftp
 
 
 class TestFunctions(TestCase):
@@ -107,4 +108,28 @@ class TestFunctions(TestCase):
       )),
       second=localpath(filename=filename, backups_directory=backups_directory),
       msg='Returns a PurePath with the filename passed on the directory from backups_directory passed'
+    )
+
+  def test_open_sftp(self):
+    ssh = MagicMock()
+    with open_sftp(ssh=ssh) as sftp:
+      self.assertEqual(
+        first=ssh.open_sftp.return_value,
+        second=sftp,
+        msg='Returns an sftp opened from the ssh passed'
+      )
+      self.assertIn(
+        member=call.open_sftp(),
+        container=ssh.mock_calls,
+        msg='Opens the sftp from the ssh passed'
+      )
+      self.assertNotIn(
+        member=call.close(),
+        container=sftp.mock_calls,
+        msg='Does not close the sftp while the context is open'
+      )
+    self.assertIn(
+      member=call.close(),
+      container=sftp.mock_calls,
+      msg='Closes the sftp after the context is closed'
     )

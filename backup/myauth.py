@@ -2,7 +2,7 @@ from datetime import datetime
 from pathlib import PurePath
 from re import findall, match
 
-from backup.ssh_client import localpath
+from backup.ssh_client import localpath, open_ssh_session, open_sftp
 
 
 class BackupFile:
@@ -176,3 +176,23 @@ def retrieved_and_deleted_backups(current_labeled_backups, backup_settings, sftp
       sftp=sftp
     )
   }
+
+
+def myauth_backup(myauth, ssh_client_options):
+  with open_ssh_session(
+    client_options=ssh_client_options,
+    credentials=myauth['credentials']
+  ) as ssh:
+    with open_sftp(ssh=ssh) as sftp:
+      return retrieved_and_deleted_backups(
+        current_labeled_backups=labeled_backups(
+          backup_files=backup_files_found(
+            sftp_attributes_from_files=sftp.listdir_attr(
+              path=myauth['backup_settings']['remote_backups_directory']
+            )
+          ),
+          keeping_quantity=myauth['backup_settings']['keeping_backups_quantity']
+        ),
+        backup_settings=myauth['backup_settings'],
+        sftp=sftp
+      )

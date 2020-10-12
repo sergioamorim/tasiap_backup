@@ -1,11 +1,11 @@
 from datetime import datetime
 from pathlib import PurePath
 from unittest import TestCase
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock, call, patch
 
 from backup.myauth import BackupFile, are_not_corrupted, is_corrupted, is_smaller_than_older, newest_backup, \
   disposable_backups, backup_files_found, is_valid_backup_filename, retrieved_file, remotepath, labeled_backups, \
-  retrieved_and_deleted_backups, deleted_remote_backup_files, deleted_remote_file
+  retrieved_and_deleted_backups, deleted_remote_backup_files, deleted_remote_file, myauth_backup
 
 
 class SFTPAttributesMock:
@@ -763,4 +763,46 @@ class TestMyauthFunctions(TestCase):
       member=[call.unlink(path=file_remotepath)],
       container=sftp.mock_calls,
       msg='The backup file passed is unlinked from the the remote backups directory'
+    )
+
+  @patch(target='backup.myauth.open_ssh_session')
+  @patch(target='backup.myauth.retrieved_and_deleted_backups')
+  def test_myauth_backup(
+    self,
+    mock_retrieved_and_deleted_backups,
+    mock_open_ssh_session
+  ):
+    ssh_client_options = {
+      'hosts_keys_filename': 'tests/hosts_keys',
+    }
+    myauth = {
+      'backup_settings': {
+        'local_backups_directory': 'C:\\Users\\me\\backups\\',
+        'remote_backups_directory': '/admin/backup/',
+        'keeping_backups_quantity': 7
+      },
+      'credentials': {
+        'username': 'user',
+        'hostname': 'host',
+        'port': 1234,
+        'pkey': 'key'
+      }
+    }
+
+    self.assertEqual(
+      first=mock_retrieved_and_deleted_backups.return_value,
+      second=myauth_backup(
+        myauth=myauth,
+        ssh_client_options=ssh_client_options
+      ),
+      msg='Returns the path for the local retrieved and the remotely deleted backup files'
+    )
+
+    self.assertIn(
+      member=call(
+        client_options=ssh_client_options,
+        credentials=myauth['credentials']
+      ),
+      container=mock_open_ssh_session.mock_calls,
+      msg='Uses the ssh client options and the credentials from the myauth settings passed to open the ssh session'
     )

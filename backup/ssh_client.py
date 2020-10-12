@@ -16,6 +16,15 @@ def open_ssh_session(client_options, credentials):
     close_ssh_session(ssh=ssh)
 
 
+@contextmanager
+def open_sftp(ssh):
+  sftp = ssh.open_sftp()
+  try:
+    yield sftp
+  finally:
+    sftp.close()
+
+
 def active_ssh_session(ssh, credentials):
   ssh.connect(
     username=credentials['username'],
