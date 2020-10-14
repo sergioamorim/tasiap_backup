@@ -643,11 +643,11 @@ class TestMyauthFunctions(TestCase):
     )
     self.assertIn(
       member=call.get(
-        remotepath=current_remotepath,
+        remotepath=current_remotepath.as_posix(),
         localpath=current_localpath
       ),
       container=sftp.mock_calls,
-      msg='Gets the remote file to the localpath using the sftp passed'
+      msg='Gets the remote file to the localpath using the sftp passed. The remotepath to get must be passed as posix.'
     )
 
   def test_remotepath(self):
@@ -741,11 +741,14 @@ class TestMyauthFunctions(TestCase):
           path=remotepath(
             remote_directory=remote_backups_directory,
             filename=backup_file.filename
-          )
+          ).as_posix()
         ) for backup_file in backup_files
       ],
       container=sftp.mock_calls,
-      msg='Each one of the backup file passed is unlinked from the the remote backups directory'
+      msg=str(
+        'Each one of the backup file passed is unlinked from the the remote backups directory. The path to unlink must '
+        'be passed as posix.'
+      )
     )
 
   def test_deleted_remote_file(self):
@@ -760,9 +763,12 @@ class TestMyauthFunctions(TestCase):
       )
     )
     self.assertIn(
-      member=[call.unlink(path=file_remotepath)],
+      member=[call.unlink(path=file_remotepath.as_posix())],
       container=sftp.mock_calls,
-      msg='The backup file passed is unlinked from the the remote backups directory'
+      msg=str(
+        'The backup file passed is unlinked from the the remote backups directory. The path to unlink must be passed '
+        'as posix.'
+      )
     )
 
   @patch(target='backup.myauth.open_ssh_session')
