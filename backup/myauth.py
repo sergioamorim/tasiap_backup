@@ -118,7 +118,7 @@ def is_valid_backup_filename(filename):
 
 
 def retrieved_file(current_remotepath, current_localpath, sftp):
-  sftp.get(remotepath=current_remotepath, localpath=current_localpath)
+  sftp.get(remotepath=current_remotepath.as_posix(), localpath=current_localpath)
   return current_localpath
 
 
@@ -153,7 +153,7 @@ def deleted_remote_backup_files(remote_directory, backup_files, sftp):
 
 
 def deleted_remote_file(file_remotepath, sftp):
-  sftp.unlink(path=file_remotepath)
+  sftp.unlink(path=file_remotepath.as_posix())
   return file_remotepath
 
 
@@ -162,7 +162,7 @@ def retrieved_and_deleted_backups(current_labeled_backups, backup_settings, sftp
     'retrieved_backup': retrieved_file(
       current_remotepath=remotepath(
         remote_directory=backup_settings['remote_backups_directory'],
-        filename=current_labeled_backups['newest_backup']
+        filename=current_labeled_backups['newest_backup'].filename
       ),
       current_localpath=localpath(
         backups_directory=backup_settings['local_backups_directory'],

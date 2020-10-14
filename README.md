@@ -20,8 +20,8 @@ Mikrotik's RouterBoards. It has functions to generate backups using the
 builtin backup mechanism from the routerboard as well as rsc script files 
 from the export command - deployed; 
 + **myauth**: has functions to retrieve MyAuth backups over sftp, to detect 
-anomalies on the backup files and to delete old backups from the server - in 
-progress;
+anomalies on the backup files and to delete old backups from the server - 
+deployed;
 + **ssh_client**: the goal of this module is to create ssh connections to 
 serve as a tool which other modules can use (as the routerboard module 
 mentioned above) - deployed. 
