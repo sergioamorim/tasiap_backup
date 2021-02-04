@@ -3,10 +3,12 @@ from pathlib import PurePath
 from unittest import TestCase
 from unittest.mock import patch, MagicMock, call
 
+from paramiko import SFTPAttributes
+
 from backup.routerboard import make_filename, current_datetime, backup_filename, script_filename, backup_command, \
   export_command, generate_backup, retrieve_file, retrieve_backup_files, generate_export_script, backup, \
-  remote_file_exists, timeout, assert_remote_file_exists, RemotePath, remotepath_without_root, \
-  routerboards_backups
+  remote_file_exists, timeout, assertion_on_remote_file, RemotePath, remotepath_without_root, \
+  routerboards_backups, remote_file_size_is_greater_than, remote_file_is_ready_to_be_retrieved
 
 
 class TestRemotePath(TestCase):
@@ -194,22 +196,37 @@ class TestBackupFunctions(TestCase):
       msg='Calls the exec_command on the ssh passed with the command acquired from the backup_command function'
     )
 
-  @patch(target='backup.routerboard.assert_remote_file_exists')
+  @patch(target='backup.routerboard.remote_file_is_ready_to_be_retrieved')
   @patch(target='backup.routerboard.localpath', return_value='local path')
   @patch(target='backup.routerboard.RemotePath')
-  def test_retrieve_file(self, mock_remotepath, mock_localpath, mock_assert_remote_file_exists):
-    backups_directory = '/backup/files/directory/path/'
+  def test_retrieve_file(self, mock_remotepath, mock_localpath, mock_remote_file_is_ready_to_be_retrieved):
+    backup_options = {
+      'backups_directory': '/backup/files/directory/path/',
+      'assertion_options': {
+        'seconds_to_timeout': 10,
+        'minimum_size_in_bytes': 77
+      }
+    }
     mock_sftp_session = MagicMock()
     filename = 'some filename'
 
-    mock_assert_remote_file_exists.return_value = True
+    mock_remote_file_is_ready_to_be_retrieved.return_value = True
     self.assertEqual(
       first=mock_localpath.return_value,
-      second=retrieve_file(filename=filename, backups_directory=backups_directory, sftp=mock_sftp_session),
+      second=retrieve_file(
+        filename=filename,
+        backup_options=backup_options,
+        sftp=mock_sftp_session
+      ),
       msg='When the remote file exists, returns the localpath of the file retrieved (acquired with localpath function)'
     )
     self.assertEqual(
-      first=[call(filename=filename, backups_directory=backups_directory)],
+      first=[
+        call(
+          filename=filename,
+          backups_directory=backup_options['backups_directory']
+        )
+      ],
       second=mock_localpath.mock_calls,
       msg='Creates the localpath using the filename and backups_directory passed'
     )
@@ -232,11 +249,11 @@ class TestBackupFunctions(TestCase):
       msg='A RemotePath is created with the filename passed as path parameter'
     )
 
-    mock_assert_remote_file_exists.return_value = False
+    mock_remote_file_is_ready_to_be_retrieved.return_value = False
     self.assertIsNone(
       obj=retrieve_file(
         filename=filename,
-        backups_directory=backups_directory,
+        backup_options=backup_options,
         sftp=mock_sftp_session
       ),
       msg='When remote file does not exists, return None'
@@ -245,14 +262,20 @@ class TestBackupFunctions(TestCase):
   @patch(target='backup.routerboard.retrieve_file', return_value='filepath')
   def test_retrieve_backup_files(self, mock_retrieve_file):
     filenames = ['filename_a', 'filename_b']
-    backups_directory = '/backups/directory/'
+    backup_options = {
+      'backups_directory': '/backups/directory/',
+      'timeout_options': {
+        'remote_file_exists_timeout_in_seconds': 10,
+        'remote_file_size_timeout_in_seconds': 10
+      }
+    }
     sftp_session = 'sftp session'
 
     self.assertEqual(
       first=[mock_retrieve_file.return_value for _ in range(0, len(filenames))],
       second=retrieve_backup_files(
         filenames=filenames,
-        backups_directory=backups_directory,
+        backup_options=backup_options,
         sftp=sftp_session
       ),
       msg='Returns the filepaths acquired on the retrieve_file function with each filename passed'
@@ -261,7 +284,7 @@ class TestBackupFunctions(TestCase):
     self.assertEqual(
       first=[call(
         filename=filename,
-        backups_directory=backups_directory,
+        backup_options=backup_options,
         sftp=sftp_session
       ) for filename in filenames],
       second=mock_retrieve_file.mock_calls,
@@ -275,7 +298,13 @@ class TestBackupFunctions(TestCase):
     ssh = MagicMock()
     routerboard = {
       'name': 'router-identification',
-      'backups_directory': '/path/to/backups/',
+      'backup_options': {
+        'backups_directory': '/path/to/save/the/backup/files/with/trailing/slash/',
+        'timeout_options': {
+          'remote_file_exists_timeout_in_seconds': 10,
+          'remote_file_size_timeout_in_seconds': 10
+        }
+      },
       'backup_password': 'pass'
     }
 
@@ -293,7 +322,7 @@ class TestBackupFunctions(TestCase):
           mock_generate_backup.return_value,
           mock_generate_export_script.return_value
         ],
-        backups_directory=routerboard['backups_directory'],
+        backup_options=routerboard['backup_options'],
         sftp=ssh.open_sftp.return_value
       )],
       second=mock_retrieve_backup_files.mock_calls,
@@ -316,12 +345,19 @@ class TestBackupFunctions(TestCase):
 
   def test_remote_file_exists(self):
     sftp = MagicMock()
-
+    assertion_options = {
+      'seconds_to_timeout': 10,
+      'minimum_size_in_bytes': 77
+    }
     filename = 'file'
     remotepath = RemotePath(path='/path/to/{filename}'.format(filename=filename))
     sftp.listdir.return_value = ['']
     self.assertFalse(
-      expr=remote_file_exists(remotepath=remotepath, sftp=sftp),
+      expr=remote_file_exists(
+        assertion_options=assertion_options,
+        remotepath=remotepath,
+        sftp=sftp
+      ),
       msg='Returns False when a list with an empty string is returned from the .listdir method on the sftp passed'
     )
     self.assertEqual(
@@ -332,7 +368,11 @@ class TestBackupFunctions(TestCase):
 
     sftp.listdir.return_value = [filename]
     self.assertTrue(
-      expr=remote_file_exists(remotepath=remotepath, sftp=sftp),
+      expr=remote_file_exists(
+        assertion_options=assertion_options,
+        remotepath=remotepath,
+        sftp=sftp
+      ),
       msg='Returns True when the list returned from the .listdir method on the sftp passed contains the filename'
     )
 
@@ -352,37 +392,186 @@ class TestBackupFunctions(TestCase):
       msg='Returns True if the amount of seconds has passed starting from the start_time passed'
     )
 
-  @patch(target='backup.routerboard.remote_file_exists')
   @patch(target='backup.routerboard.timeout')
-  def test_assert_remote_file_exists(self, mock_timeout, mock_remote_file_exists):
+  def test_assertion_on_remote_file(self, mock_timeout):
+    evaluation_params = {
+      'evaluation_function': MagicMock(),
+      'assertion_options': {
+        'seconds_to_timeout': 10,
+        'minimum_size_in_bytes': 77
+      }
+    }
+
     mock_timeout.return_value = True
-    mock_remote_file_exists.return_value = False
+    evaluation_params['evaluation_function'].return_value = False
     self.assertFalse(
-      expr=assert_remote_file_exists(remotepath='', sftp='', seconds=''),
-      msg='Returns False when the timeout has passed and the file does not exists'
+      expr=assertion_on_remote_file(
+        evaluation_params=evaluation_params,
+        remotepath='',
+        sftp=''
+      ),
+      msg='Returns False when the timeout has passed and the evaluation fails'
     )
 
     mock_timeout.return_value = True
-    mock_remote_file_exists.return_value = True
+    evaluation_params['evaluation_function'].return_value = True
     self.assertTrue(
-      expr=assert_remote_file_exists(remotepath='', sftp='', seconds=''),
-      msg='Returns True if the file exists, regardless of the timeout being expired'
+      expr=assertion_on_remote_file(
+        evaluation_params=evaluation_params,
+        remotepath='',
+        sftp=''
+      ),
+      msg='Returns True if the evaluation passes, regardless of the timeout being expired'
     )
 
     mock_timeout.return_value = False
-    mock_remote_file_exists.return_value = True
+    evaluation_params['evaluation_function'].return_value = True
     self.assertTrue(
-      expr=assert_remote_file_exists(remotepath='', sftp='', seconds=''),
-      msg='Returns True if the file exists and the timeout has not expired'
+      expr=assertion_on_remote_file(
+        evaluation_params=evaluation_params,
+        remotepath='',
+        sftp=''
+      ),
+      msg='Returns True if the evaluation passes and the timeout has not expired'
     )
 
     mock_timeout.return_value = False
-    mock_remote_file_exists.side_effect = [False, True, True]
+    evaluation_params['evaluation_function'].side_effect = [False, True, True]
     self.assertTrue(
-      expr=assert_remote_file_exists(remotepath='', sftp='', seconds=''),
+      expr=assertion_on_remote_file(
+        evaluation_params=evaluation_params,
+        remotepath='',
+        sftp=''
+      ),
       msg=str(
-        'Returns True even if the file was not there the first time that the check was made,'
-        'just the timeout needs to not be expired'
+        'Returns True even if the evaluation fails the first time that the check was made, just the timeout needs to '
+        'not be expired'
+      )
+    )
+
+  @patch(target='backup.routerboard.assertion_on_remote_file')
+  def test_remote_file_is_ready_to_be_retrieved(self, mock_assertion_on_remote_file):
+    assertion_options = {
+      'seconds_to_timeout': 10,
+      'minimum_size_in_bytes': 77
+    }
+    evaluation_params_remote_file_exists = {
+      'evaluation_function': remote_file_exists,
+      'assertion_options': assertion_options
+    }
+    evaluation_params_remote_file_size_is_greater_than = {
+      'evaluation_function': remote_file_size_is_greater_than,
+      'assertion_options': assertion_options
+    }
+    remotepath = MagicMock()
+    sftp = MagicMock()
+
+    mock_assertion_on_remote_file.side_effect = [True, True]
+    self.assertTrue(
+      expr=remote_file_is_ready_to_be_retrieved(
+        assertion_options=assertion_options,
+        remotepath=remotepath,
+        sftp=sftp
+      ),
+      msg='Returns False when both assertions on the remote file fail'
+    )
+    self.assertIn(
+      member=[
+        call(
+          evaluation_params=evaluation_params_remote_file_exists,
+          remotepath=remotepath,
+          sftp=sftp
+        ),
+        call(
+          evaluation_params=evaluation_params_remote_file_size_is_greater_than,
+          remotepath=remotepath,
+          sftp=sftp
+        )
+      ],
+      container=mock_assertion_on_remote_file.mock_calls,
+      msg='Checks if the remote file exists and the size of such file'
+    )
+
+    mock_assertion_on_remote_file.side_effect = [False, False]
+    self.assertFalse(
+      expr=remote_file_is_ready_to_be_retrieved(
+        assertion_options=assertion_options,
+        remotepath=remotepath,
+        sftp=sftp
+      ),
+      msg='Returns False when both assertions on the remote file fail'
+    )
+
+    mock_assertion_on_remote_file.side_effect = [True, False]
+    self.assertFalse(
+      expr=remote_file_is_ready_to_be_retrieved(
+        assertion_options=assertion_options,
+        remotepath=remotepath,
+        sftp=sftp
+      ),
+      msg='Returns False when both assertions on the remote file fail'
+    )
+
+    mock_assertion_on_remote_file.side_effect = [False, True]
+    self.assertFalse(
+      expr=remote_file_is_ready_to_be_retrieved(
+        assertion_options=assertion_options,
+        remotepath=remotepath,
+        sftp=sftp
+      ),
+      msg='Returns False when both assertions on the remote file fail'
+    )
+
+  def test_remote_file_size_is_greater_than(self):
+    sftp = MagicMock()
+    sftp.stat.return_value = SFTPAttributes()
+    remotepath = RemotePath('/file')
+    assertion_options = {
+      'seconds_to_timeout': 10,
+      'minimum_size_in_bytes': 77
+    }
+
+    sftp.stat.return_value.st_size = assertion_options['minimum_size_in_bytes'] + 1
+    self.assertTrue(
+      expr=remote_file_size_is_greater_than(
+        assertion_options=assertion_options,
+        remotepath=remotepath,
+        sftp=sftp
+      ),
+      msg=str(
+        'Returns True when the file on the remotepath has more bytes than the minimum_size_in_bytes param that was '
+        'specified in the assertion_options'
+      )
+    )
+    self.assertIn(
+      member=call(path=remotepath.without_root),
+      container=sftp.stat.mock_calls,
+      msg='Checks the stat of the passed remotepath'
+    )
+
+    sftp.stat.return_value.st_size = assertion_options['minimum_size_in_bytes']
+    self.assertTrue(
+      expr=remote_file_size_is_greater_than(
+        assertion_options=assertion_options,
+        remotepath=remotepath,
+        sftp=sftp
+      ),
+      msg=str(
+        'Returns True when the file on the remotepath has the same number of bytes than minimum_size_in_bytes param '
+        'that was specified in the assertion_options'
+      )
+    )
+
+    sftp.stat.return_value.st_size = assertion_options['minimum_size_in_bytes'] - 1
+    self.assertFalse(
+      expr=remote_file_size_is_greater_than(
+        assertion_options=assertion_options,
+        remotepath=remotepath,
+        sftp=sftp
+      ),
+      msg=str(
+        'Returns False when the file on the remotepath has less bytes than minimum_size_in_bytes param that was '
+        'specified in the assertion_options'
       )
     )
 

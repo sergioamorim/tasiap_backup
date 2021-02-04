@@ -63,20 +63,45 @@ def generate_export_script(device_id, ssh):
   return current_export_command['filename']
 
 
-def retrieve_file(filename, backups_directory, sftp):
-  current_localpath = localpath(filename=filename, backups_directory=backups_directory)
+def retrieve_file(filename, backup_options, sftp):
+  current_localpath = localpath(
+    filename=filename,
+    backups_directory=backup_options['backups_directory']
+  )
   remotepath = RemotePath(path=filename)
-  if assert_remote_file_exists(remotepath=remotepath, sftp=sftp):
+  if remote_file_is_ready_to_be_retrieved(
+          assertion_options=backup_options['assertion_options'],
+          remotepath=remotepath,
+          sftp=sftp
+  ):
     sftp.get(remotepath=remotepath.without_root, localpath=str(current_localpath))
     sftp.unlink(path=remotepath.without_root)
     return current_localpath
   return None
 
 
-def retrieve_backup_files(filenames, backups_directory, sftp):
+def remote_file_is_ready_to_be_retrieved(assertion_options, remotepath, sftp):
+  return assertion_on_remote_file(
+    evaluation_params={
+      'evaluation_function': remote_file_exists,
+      'assertion_options': assertion_options
+    },
+    remotepath=remotepath,
+    sftp=sftp
+  ) and assertion_on_remote_file(
+    evaluation_params={
+      'evaluation_function': remote_file_size_is_greater_than,
+      'assertion_options': assertion_options
+    },
+    remotepath=remotepath,
+    sftp=sftp
+  )
+
+
+def retrieve_backup_files(filenames, backup_options, sftp):
   return [retrieve_file(
     filename=filename,
-    backups_directory=backups_directory,
+    backup_options=backup_options,
     sftp=sftp
   ) for filename in filenames]
 
@@ -91,28 +116,43 @@ def backup(routerboard, ssh):
       ),
       generate_export_script(device_id=routerboard['name'], ssh=ssh)
     ],
-    backups_directory=routerboard['backups_directory'],
+    backup_options=routerboard['backup_options'],
     sftp=ssh.open_sftp()
   )
 
 
-def remote_file_exists(remotepath, sftp):
+def remote_file_exists(assertion_options, remotepath, sftp):
   return remotepath.pure.name in sftp.listdir(path=remotepath.parent_without_root)
+
+
+def remote_file_size_is_greater_than(assertion_options, remotepath, sftp):
+  return sftp.stat(path=remotepath.without_root).st_size >= assertion_options['minimum_size_in_bytes']
 
 
 def timeout(start_time, seconds):
   return datetime.now() >= start_time + timedelta(seconds=seconds)
 
 
-def assert_remote_file_exists(remotepath, sftp, seconds=10):
+def assertion_on_remote_file(evaluation_params, remotepath, sftp):
   start_time = datetime.now()
   while (
-    not remote_file_exists(remotepath=remotepath, sftp=sftp) and
-    not timeout(start_time=start_time, seconds=seconds)
+          not evaluation_params['evaluation_function'](
+            assertion_options=evaluation_params['assertion_options'],
+            remotepath=remotepath,
+            sftp=sftp
+          ) and
+          not timeout(
+            start_time=start_time,
+            seconds=evaluation_params['assertion_options']['seconds_to_timeout']
+          )
   ):
     pass
 
-  return remote_file_exists(remotepath=remotepath, sftp=sftp)
+  return evaluation_params['evaluation_function'](
+    assertion_options=evaluation_params['assertion_options'],
+    remotepath=remotepath,
+    sftp=sftp
+  )
 
 
 def remotepath_without_root(remotepath):
